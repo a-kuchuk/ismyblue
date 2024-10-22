@@ -1,4 +1,4 @@
-export const MAX_ROUNDS = 8 // 2^6, hence max resolution of 1.
+export const MAX_ROUNDS = 10 // 2^6, hence max resolution of 1.
 // Version 0.0.1 was the initial version.
 // Version 0.0.2 implemented randomization of the probe color.
 // Version 0.0.3 implemented a GLM for determining the sigmoid parameters and a color mask.

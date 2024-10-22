@@ -47,7 +47,7 @@
       <div class="about-content">
         <h2>Whoops!</h2>
         <p>
-          The first color is always very green or very blue. If you mislabel the first color, you
+          The first color is always very red or very blue. If you mislabel the first color, you
           won't get accurate thresholds. This might indicate you have an unusually calibrated
           screen, a night filter, or you made a mistake. Try again?
         </p>
@@ -55,7 +55,7 @@
       </div>
     </div>
     <div
-      v-if="rounds == MAX_ROUNDS && (allSame == 'blue' || allSame == 'green')"
+      v-if="rounds == MAX_ROUNDS && (allSame == 'blue' || allSame == 'red')"
       class="about-popup"
     >
       <div class="about-content">
@@ -75,7 +75,7 @@
           People have different names for the colors they see.
           <a href="https://en.wikipedia.org/wiki/Sapir%E2%80%93Whorf_hypothesis" target="_blank"
             >Language can affect how we memorize and name colors</a
-          >. This is a color naming test designed to measure your personal blue-green boundary.
+          >. This is a color naming test designed to measure your personal blue-red boundary.
         </p>
         <h2>Test validity</h2>
         <p>
@@ -182,12 +182,10 @@ import { fitSigmoid } from '@/utils/glmUtils'
 import maskImage from '@/assets/mask.png'
 
 export default {
-  components: {
-    Results
-  },
+  components: { Results },
   data() {
     return {
-      currentHue: Math.random() > 0.5 ? 150 : 210,
+      currentHue: Math.random() > 0.5 ? 0 : 210,
       showInitialMessage: true,
       polarity: 0,
       rounds: 0,
@@ -196,120 +194,115 @@ export default {
       showMask: false,
       maskImageUrl: maskImage,
       showAbout: false,
-      showDemo: false,
-      greenButtonRight: Math.random() > 0.5,
       firstColorMislabeled: false,
       allSame: false,
       showResults: false,
-      errorMessage: ''
-    }
+      errorMessage: '',
+      consecutiveCount: 0,
+      lastResponse: null
+    };
   },
   computed: {
     rightButton() {
-      return this.greenButtonRight ? 'green' : 'blue'
+      return this.redButtonRight ? 'red' : 'blue';
     },
     leftButton() {
-      return this.greenButtonRight ? 'blue' : 'green'
+      return this.redButtonRight ? 'blue' : 'red';
     },
     currentColor() {
-      return `hsl(${this.currentHue}, 100%, 50%)`
-    },
-    bluerColor() {
-      return `hsl(${this.finalHue + 5}, 100%, 50%)`
-    },
-    greenerColor() {
-      return `hsl(${this.finalHue - 5}, 100%, 50%)`
+      return `hsl(${this.currentHue}, 100%, 50%)`;
     },
     containerStyle() {
-      if (this.rounds === MAX_ROUNDS) {
-        return {
-          backgroundColor: 'white'
-        }
-      } else if (this.showMask) {
-        return {
-          backgroundColor: this.showMask ? 'transparent' : this.currentColor,
-          backgroundImage: this.showMask ? `url(${this.maskImageUrl})` : 'none',
-          backgroundRepeat: 'repeat',
-          backgroundSize: 'auto'
-        }
-      } else {
-        return {
-          backgroundColor: this.currentColor
-        }
-      }
+      return {
+        backgroundColor: this.showMask ? 'transparent' : this.currentColor,
+        backgroundImage: this.showMask ? `url(${this.maskImageUrl})` : 'none',
+        backgroundRepeat: 'repeat',
+        backgroundSize: 'auto'
+      };
     }
   },
   methods: {
     selectColor(color) {
-      this.responses.push({ hue: this.currentHue, response: color })
+      this.responses.push({ hue: this.currentHue, response: color });
 
       if (this.rounds === 0) {
-        if (color === 'blue' && this.currentHue < 180) {
-          this.firstColorMislabeled = true
-        } else if (color === 'green' && this.currentHue > 180) {
-          this.firstColorMislabeled = true
+        // Initial mislabeling check
+        if (color === 'blue' && this.currentHue < 10) {
+          this.firstColorMislabeled = true;
+        } else if (color === 'red' && this.currentHue > 10) {
+          this.firstColorMislabeled = true;
         }
-        if (this.firstColorMislabeled) {
-          return
-        }
+        if (this.firstColorMislabeled) return;
       }
 
-      // Get the new probe value
-      const { b, newProbe, polarity } = fitSigmoid(
+      // Determine shift amount based on response pattern
+      let shiftAmount = 15; // Base shift
+      if (color === this.lastResponse) {
+        this.consecutiveCount++;
+        if (this.consecutiveCount > 2) {
+          shiftAmount = 50; // More dramatic shift for consecutive responses
+        }
+      } else {
+        this.consecutiveCount = 1; // Reset count on switch
+      }
+      this.lastResponse = color; // Update last response
+
+      // Shift the hue towards the opposite color
+      if (color === 'red') {
+        this.currentHue = Math.min(240, this.currentHue + shiftAmount);
+      } else {
+        this.currentHue = Math.max(0, this.currentHue - shiftAmount);
+      }
+
+      // Fit the sigmoid model to the responses
+      const { b, polarity } = fitSigmoid(
         this.responses.map((r) => r.hue),
         this.responses.map((r) => r.response === 'blue'),
         this.polarity,
         0.4
-      )
-      this.polarity = polarity == 1 ? -1 : 1
-      this.currentHue = newProbe
-      this.rounds++
+      );
+      this.polarity = polarity === 1 ? -1 : 1;
+
+      this.rounds++;
       if (this.rounds === MAX_ROUNDS) {
-        if (
-          this.responses.every((r) => r.response === 'blue') ||
-          this.responses.every((r) => r.response === 'green')
-        ) {
-          this.allSame = this.responses[0].response
-          return
+        if (this.responses.every((r) => r.response === 'blue') || this.responses.every((r) => r.response === 'red')) {
+          this.allSame = this.responses[0].response;
+          return;
         }
-        this.finalHue = 180 - b
-        this.currentHue = this.finalHue
-        this.showResults = true
-        confetti()
+        this.finalHue = 180 - b; // Inferred threshold
+        this.currentHue = this.finalHue; // Update current hue to final
+        this.showResults = true; // Show results
+        confetti(); // Add confetti effect
       }
-      this.showMask = true
+
+      this.showMask = true;
       setTimeout(() => {
-        this.showMask = false
-      }, 200)
+        this.showMask = false;
+      }, 200);
     },
     reset() {
-      let currentHue = Math.random() > 0.5 ? 150 : 210
-      if (this.firstColorMislabeled) {
-        currentHue = this.currentHue == 210 ? 150 : 210
-      }
-
-      this.currentHue = currentHue
-      this.rounds = 0
-      this.finalHue = 0
-      this.polarity = 0
-      this.showInitialMessage = true
-      this.responses = []
-      this.showMask = false
-      this.firstColorMislabeled = false
-      this.allSame = false
-      this.showResults = false
+      this.currentHue = Math.random() > 0.5 ? 0 : 210;
+      this.rounds = 0;
+      this.finalHue = 0;
+      this.polarity = 0;
+      this.showInitialMessage = true;
+      this.responses = [];
+      this.showMask = false;
+      this.firstColorMislabeled = false;
+      this.allSame = false;
+      this.showResults = false;
 
       setTimeout(() => {
-        this.showInitialMessage = false
-      }, 2000)
+        this.showInitialMessage = false;
+      }, 2000);
     }
   },
   mounted() {
     setTimeout(() => {
-      this.showInitialMessage = false
-    }, 2000)
+      this.showInitialMessage = false;
+    }, 2000);
   }
-}
+};
 </script>
 
 <style src="./BlueGreenTest.css" scoped />
